@@ -1,0 +1,12 @@
+node_modules/
+
+# Build output: both editions' .vsix files are produced by `npm run package`.
+dist/
+*.vsix
+
+# Anything personal stays out of the shared repo: chat inventories, scratch
+# notes, exported diagnostics. Nothing here is needed to build the extension.
+local/
+
+.vscode-test/
+*.log

@@ -1,0 +1,170 @@
+{
+  "name": "claude-account-switcher",
+  "displayName": "Claude Account Switcher (Experimental)",
+  "description": "Claude Account Switcher plus per-window accounts, per-account Remote Control, and credential backup.",
+  "version": "1.0.0",
+  "publisher": "local",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clumsyboss/vs-claude-switcher.git"
+  },
+  "claudeswitcher": {
+    "edition": "experimental"
+  },
+  "scripts": {
+    "test": "node test/harness.js && node test/profiles.test.js && node test/edition.test.js",
+    "stage": "node build.js --no-package",
+    "package": "node build.js",
+    "package:main": "node build.js main",
+    "package:experimental": "node build.js experimental"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "claudeswitcher.globalSwitch",
+        "title": "Claude Accounts: Switch Account (Global)",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.globalAdd",
+        "title": "Claude Accounts: Add Account (Global)…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.saveCurrentLogin",
+        "title": "Claude Accounts: Save Current Login as Profile…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.globalImport",
+        "title": "Claude Accounts: Import Per-Window Account into Global…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.globalRemove",
+        "title": "Claude Accounts: Forget Saved Account (Global)…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.remoteControl",
+        "title": "Claude Accounts: Remote Control per Account…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.switchAccount",
+        "title": "Claude Accounts: Switch Active Account",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.newChatAs",
+        "title": "Claude Accounts: New Chat as Account…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.newTerminalAs",
+        "title": "Claude Accounts: New Terminal as Account…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.openWindowAs",
+        "title": "Claude Accounts: Open New Window as Account…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.usePerWindowAccounts",
+        "title": "Claude Accounts: Use Per-Window Accounts",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.useMachineWideAccount",
+        "title": "Claude Accounts: Use One Machine-Wide Account",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.addAccount",
+        "title": "Claude Accounts: Add Account…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.renameAccount",
+        "title": "Claude Accounts: Rename Account…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.setAccountIcon",
+        "title": "Claude Accounts: Set Account Icon…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.openConfigFile",
+        "title": "Claude Accounts: Open Config File",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.removeAccount",
+        "title": "Claude Accounts: Remove Account…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.relogin",
+        "title": "Claude Accounts: Re-login Account…",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.showStatus",
+        "title": "Claude Accounts: Show Status",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.refreshUsage",
+        "title": "Claude Accounts: Refresh Usage",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.backup",
+        "title": "Claude Accounts: Backup Credentials (encrypted)",
+        "category": "Claude Accounts"
+      },
+      {
+        "command": "claudeswitcher.restore",
+        "title": "Claude Accounts: Restore Credentials…",
+        "category": "Claude Accounts"
+      }
+    ],
+    "configuration": {
+      "title": "Claude Account Switcher",
+      "properties": {
+        "claudeswitcher.root": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Directory holding per-account Claude config dirs. Defaults to ~/.claude-switcher"
+        },
+        "claudeswitcher.usageIcon": {
+          "type": "string",
+          "default": "pulse",
+          "scope": "machine",
+          "description": "Codicon id for the usage meter, without the $() wrapper. Per-account icons are set with 'Set Account Icon…'."
+        },
+        "claudeswitcher.reloadPrompt": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "description": "After switching the active account, offer to reload the window so native-UI chats pick it up."
+        }
+      }
+    }
+  }
+}

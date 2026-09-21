@@ -1,0 +1,12 @@
+# Only used if someone packages from the repo root by hand; `npm run package`
+# stages each edition into dist/ and writes its own ignore file there.
+.vscode/**
+.git/**
+test/**
+docs/**
+local/**
+dist/**
+node_modules/**
+build.js
+.gitignore
+*.vsix
