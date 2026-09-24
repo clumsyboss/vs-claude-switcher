@@ -6,9 +6,8 @@ through the browser login every time.
 Everything stays on your machine. No server, no telemetry, no account data
 leaves the laptop.
 
-**Windows only.** Credentials are encrypted with Windows DPAPI and the account
-store is locked down with `icacls`; neither has a macOS or Linux equivalent here
-yet.
+Works on **Windows, macOS and Linux**. Saved logins are encrypted at rest using
+whatever credential store the platform provides — see [Security](#security).
 
 ---
 
@@ -18,7 +17,7 @@ Download `claude-account-switcher-main-<version>.vsix` from the
 [latest release](https://github.com/clumsyboss/vs-claude-switcher/releases), then:
 
 ```powershell
-code --install-extension claude-account-switcher-main-1.0.0.vsix
+code --install-extension claude-account-switcher-main-1.0.1.vsix
 ```
 
 Reload VS Code. You should see your Claude account name in the bottom-right
@@ -90,7 +89,7 @@ the reliable way to move everything across.
 ~/.claude-switcher/
   registry.json                     account list, display names, active account
   profiles/
-    <name>.enc                      DPAPI-encrypted credentials
+    <name>.enc                      encrypted credentials (see Security)
     <name>.meta.json                email, org, when it was saved
   accounts/<name>/                  scratch space used during a login, then emptied
 ```
@@ -100,14 +99,33 @@ and reloads.
 
 ### Security
 
-- Credentials are encrypted with Windows **DPAPI at `CurrentUser` scope**. A
-  copied `.enc` file is inert on another machine or under another Windows user.
-- Account directories have inheritance stripped and are granted to your user
-  only.
+Saved logins are encrypted at rest. The key never leaves your OS credential
+store, so a copied `.enc` file is inert on another machine or user account:
+
+| | Credential store | Encryption |
+|---|---|---|
+| **Windows** | DPAPI, `CurrentUser` scope | DPAPI |
+| **macOS** | login Keychain | AES-256-GCM |
+| **Linux** | libsecret, else a `0600` key file | AES-256-GCM |
+
+Run **Show Status** to see which one your machine is using.
+
+The Linux file fallback is the weakest of the three — anything that can read
+your home directory can read that key. It is only used when `secret-tool` is
+not installed.
+
+- Account directories are restricted to your user: ACL inheritance stripped on
+  Windows, `chmod 700` elsewhere.
 - A refresh token is never duplicated: a login is *moved* into the encrypted
   profile, and the plaintext copy is deleted only after the encrypted one has
   been read back and verified.
+- Decryption is authenticated — a tampered profile fails loudly rather than
+  producing garbage.
 - The extension never logs, prints or transmits token material.
+
+**Profiles do not travel between machines.** That is the point of tying them to
+the OS store. To use an account on a second machine, add it there and sign in
+again.
 
 ## Troubleshooting
 
@@ -121,9 +139,10 @@ window.
 profile. Run **Save Current Login…**, or you will lose it the next time you
 switch away.
 
-**`claude` not found** — the extension looks under
-`AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\bin\`, then falls
-back to `where claude`. Install Claude Code, or put it on `PATH`.
+**`claude` not found** — the extension checks the usual install locations for
+your platform (`AppData\Roaming\npm\...` on Windows; `~/.local/bin`,
+`/opt/homebrew/bin`, `/usr/local/bin` elsewhere), then falls back to `where` /
+`which`. Install Claude Code, or put it on `PATH`.
 
 **Anything else** — run **Claude Accounts: Show Status** and send the output
 from the "Claude Account Switcher" output channel. It contains no token
@@ -144,7 +163,7 @@ They share an extension id, so installing one replaces the other — you can nev
 end up with two status bars fighting over the same account store.
 
 ```powershell
-npm test              # 207 tests, no network, no touching your real ~/.claude
+npm test              # 271 tests, no network, no touching your real ~/.claude
 npm run stage         # build both editions into dist/ without packaging
 npm run package       # both .vsix files into dist/
 npm run package:main  # just the team build

@@ -5,12 +5,13 @@ const cp = require('child_process')
 
 const store = require('./lib/store')
 const claude = require('./lib/claude')
-const dpapi = require('./lib/dpapi')
 const envBridge = require('./lib/env')
 const usageLib = require('./lib/usage')
 const profilesLib = require('./lib/profiles')
 const liveLib = require('./lib/live')
 const remoteLib = require('./lib/remote')
+const secretsLib = require('./lib/secrets')
+const shell = require('./lib/shell')
 const editionLib = require('./lib/edition')
 
 const NEW_CONVERSATION = 'claude-vscode.newConversation'
@@ -237,7 +238,6 @@ async function applyToNativeUI(name) {
 
 /**
  * Launch `claude` in a terminal bound to one account.
- * Quoting uses PowerShell's call operator, the default shell here.
  */
 function launchTerminal(title, dir, args) {
   const bin = claude.resolveBin()
@@ -251,8 +251,7 @@ function launchTerminal(title, dir, args) {
     name: title, env, iconPath: new vscode.ThemeIcon('account'),
   })
   term.show()
-  const quoted = "'" + bin.split("'").join("''") + "'"
-  term.sendText('& ' + quoted + (args.length ? ' ' + args.join(' ') : ''))
+  term.sendText(shell.invoke(bin, args))
   return term
 }
 
@@ -574,10 +573,17 @@ async function newTerminalAs() {
   launchTerminal('Claude (' + name + ')', accountDirFor(name), [])
 }
 
-/** Resolve a launcher for a fresh VS Code window. */
+/**
+ * Resolve a launcher for a fresh VS Code window.
+ *
+ * appRoot is `<install>/resources/app`, so the executable sits two levels up on
+ * Windows and Linux. A .app bundle nests it deeper and under a different name,
+ * and `process.execPath` inside the bundle is the right answer there anyway.
+ */
 function vscodeLauncher() {
-  const fromAppRoot = path.join(vscode.env.appRoot, '..', '..', 'Code.exe')
-  if (fs.existsSync(fromAppRoot)) return fromAppRoot
+  const exe = process.platform === 'win32' ? 'Code.exe' : 'code'
+  const fromAppRoot = path.join(vscode.env.appRoot, '..', '..', exe)
+  if (process.platform !== 'darwin' && fs.existsSync(fromAppRoot)) return fromAppRoot
   return process.execPath
 }
 
@@ -1015,6 +1021,7 @@ async function showStatus() {
   output.appendLine('')
   output.appendLine('=== Claude accounts ===')
   output.appendLine('edition: ' + edition)
+  output.appendLine('platform: ' + process.platform + '  ·  credential store: ' + secretsLib.describe())
   output.appendLine('root: ' + root())
   output.appendLine('mode: ' + store.getMode(root()))
   output.appendLine('this window: ' + JSON.stringify(currentWindowAccount()))
@@ -1064,6 +1071,9 @@ async function showStatus() {
   output.appendLine('(* = this window)')
 }
 
+/** Neutral now that the backend is not always DPAPI; '.dpapi' still restores. */
+const BACKUP_EXT = '.enc'
+
 async function backup() {
   const name = await pickAccount('Back up credentials for...', { includeDefault: false })
   if (!name) return
@@ -1072,18 +1082,21 @@ async function backup() {
     vscode.window.showWarningMessage('"' + name + '" has no credentials to back up.')
     return
   }
-  const blob = dpapi.protect(fs.readFileSync(src))
+  const blob = secretsLib.protect(fs.readFileSync(src))
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const dest = path.join(root(), 'backups', name + '-' + stamp + '.dpapi')
+  const dest = path.join(root(), 'backups', name + '-' + stamp + BACKUP_EXT)
   fs.writeFileSync(dest, blob)
   log('backed up ' + name + ' -> ' + dest + ' (' + blob.length + ' bytes)')
   vscode.window.showInformationMessage(
-    'Backed up "' + name + '" (DPAPI-encrypted, readable only by this Windows user).')
+    'Backed up "' + name + '" (' + secretsLib.describe() + '; readable only by you, on this machine).')
 }
 
 async function restore() {
   const dir = path.join(root(), 'backups')
-  const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.dpapi')) : []
+  // .dpapi is what Windows-only builds wrote; still listed so old backups restore.
+  const files = fs.existsSync(dir)
+    ? fs.readdirSync(dir).filter((f) => f.endsWith(BACKUP_EXT) || f.endsWith('.dpapi'))
+    : []
   if (!files.length) {
     vscode.window.showInformationMessage('No backups found.')
     return
@@ -1100,7 +1113,7 @@ async function restore() {
   const confirm = await vscode.window.showWarningMessage(
     'Overwrite current credentials for "' + name + '" with ' + pick + '?', { modal: true }, 'Restore')
   if (confirm !== 'Restore') return
-  const plain = dpapi.unprotect(fs.readFileSync(path.join(dir, pick)))
+  const plain = secretsLib.unprotect(fs.readFileSync(path.join(dir, pick)))
   fs.writeFileSync(path.join(target, '.credentials.json'), plain)
   store.lockdown(target)
   vscode.window.showInformationMessage('Restored "' + name + '".')

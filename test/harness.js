@@ -233,8 +233,10 @@ async function main() {
   console.log('\n-- backup / restore round-trip --')
   q.quick.push('work'); q.info.push(undefined)
   await registered['claudeswitcher.backup']()
-  const backups = fs.readdirSync(path.join(TEST_ROOT, 'backups')).filter((f) => f.endsWith('.dpapi'))
+  const backups = fs.readdirSync(path.join(TEST_ROOT, 'backups'))
+    .filter((f) => f.endsWith('.enc') || f.endsWith('.dpapi'))
   check('backup file written', backups.length === 1, backups.join(','))
+  check('written with the platform-neutral extension', backups[0].endsWith('.enc'), backups[0])
   const blob = fs.readFileSync(path.join(TEST_ROOT, 'backups', backups[0]))
   check('backup is encrypted (no plaintext marker)', !blob.toString('utf8').includes('claudeAiOauth'))
 
@@ -244,6 +246,17 @@ async function main() {
   await registered['claudeswitcher.restore']()
   const restored = fs.readFileSync(path.join(workDir, '.credentials.json'), 'utf8')
   check('credentials restored from encrypted backup', restored.includes('claudeAiOauth'), restored)
+
+  // Builds before macOS support wrote .dpapi. Those files must still restore,
+  // or upgrading would quietly strip every backup a user already had.
+  const legacyName = backups[0].replace(/\.enc$/, '.dpapi')
+  fs.copyFileSync(path.join(TEST_ROOT, 'backups', backups[0]),
+    path.join(TEST_ROOT, 'backups', legacyName))
+  fs.writeFileSync(path.join(workDir, '.credentials.json'), '{"corrupted":"again"}')
+  q.quick.push(legacyName); q.warn.push('Restore'); q.info.push(undefined)
+  await registered['claudeswitcher.restore']()
+  check('a legacy .dpapi backup still restores',
+    fs.readFileSync(path.join(workDir, '.credentials.json'), 'utf8').includes('claudeAiOauth'))
 
   console.log('\n-- removeAccount --')
   q.quick.push('personal'); q.warn.push('Remove'); q.info.push(undefined)

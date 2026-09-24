@@ -22,7 +22,7 @@ then run side by side in different windows.
 have marked "off". Command: **Claude Accounts: Remote Control per Account…**.
 The preference is stored in `registry.json` under `remote`.
 
-**Credential backup and restore.** DPAPI-encrypted snapshots of an account's
+**Credential backup and restore.** Encrypted snapshots of an account's
 credentials into `~/.claude-switcher/backups/`.
 
 **Rename and icons.** Change an account's display label and its status bar
@@ -67,7 +67,7 @@ points at. This extension gives each account its own directory:
     personal/
     side/
   backups/
-    work-2026-09-14T...dpapi   DPAPI-encrypted credential snapshots
+    work-2026-09-14T...enc     encrypted credential snapshots (older builds wrote .dpapi; both restore)
 ```
 
 Nothing is swapped in or out of `~/.claude`. Accounts are fully independent, so
@@ -102,7 +102,7 @@ entirely offline.
 | **Open Config File** | Opens `registry.json` to edit labels, icons and mode by hand. |
 | **Add Account…** / **Re-login Account…** | Browser login for a new or expired account. |
 | **Show Status** | Live `claude auth status` for every account, in an output channel. |
-| **Backup / Restore Credentials** | DPAPI-encrypted snapshot of one account's tokens. |
+| **Backup / Restore Credentials** | Encrypted snapshot of one account's tokens, using the platform's credential store. |
 | **Remove Account…** | Deletes the local directory. Your actual Claude account is untouched. |
 
 The status bar shows what **this window** is on. A pin icon (`📌 work`) means the
@@ -265,17 +265,19 @@ Do not rename the `name` key by hand: it must match the directory under
 
 ## Security
 
-- Each account directory is locked with `icacls` to your Windows user only
-  (inheritance stripped), since these hold live OAuth refresh tokens.
-- Backups are encrypted with Windows DPAPI at `CurrentUser` scope, so a backup
-  file copied to another machine or user account is inert.
+- Each account directory is restricted to your user, since these hold live
+  OAuth refresh tokens: `icacls` with inheritance stripped on Windows,
+  `chmod 700` elsewhere.
+- Backups are encrypted the same way as saved profiles — DPAPI on Windows, an
+  AES key held in the Keychain on macOS — so a backup copied to another machine
+  or user account is inert.
 - The extension never logs, prints, or transmits token material.
 
 ## Build and install
 
 ```powershell
 npm run package:experimental
-code --install-extension dist\claude-account-switcher-experimental-1.0.0.vsix
+code --install-extension dist\claude-account-switcher-experimental-1.0.1.vsix
 ```
 
 Then reload VS Code. To develop instead, open the repo in VS Code and press
