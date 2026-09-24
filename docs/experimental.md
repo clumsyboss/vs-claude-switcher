@@ -277,7 +277,7 @@ Do not rename the `name` key by hand: it must match the directory under
 
 ```powershell
 npm run package:experimental
-code --install-extension dist\claude-account-switcher-experimental-1.0.1.vsix
+code --install-extension dist\claude-account-switcher-experimental-1.0.2.vsix
 ```
 
 Then reload VS Code. To develop instead, open the repo in VS Code and press

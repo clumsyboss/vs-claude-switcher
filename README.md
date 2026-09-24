@@ -17,7 +17,7 @@ Download `claude-account-switcher-main-<version>.vsix` from the
 [latest release](https://github.com/clumsyboss/vs-claude-switcher/releases), then:
 
 ```powershell
-code --install-extension claude-account-switcher-main-1.0.1.vsix
+code --install-extension claude-account-switcher-main-1.0.2.vsix
 ```
 
 Reload VS Code. You should see your Claude account name in the bottom-right
@@ -97,6 +97,12 @@ the reliable way to move everything across.
 `registry.json` is plain JSON and safe to edit by hand; the extension watches it
 and reloads.
 
+**On macOS, Claude Code does not keep its live login in a file.** It uses the
+login Keychain item `Claude Code-credentials`, and falls back to
+`~/.claude/.credentials.json` only when the Keychain has nothing. The switcher
+reads and writes that same item, so a switch looks to Claude Code exactly like a
+fresh sign-in. **Show Status** prints where it is looking.
+
 ### Security
 
 Saved logins are encrypted at rest. The key never leaves your OS credential
@@ -135,6 +141,21 @@ expired (they last a few weeks). Run **Claude Accounts: Re-login Account…**.
 **A chat is still using the old account** — it was already open. Reload the
 window.
 
+**"Anthropic is rate-limiting usage checks" (HTTP 429)** — the usage endpoint
+limits how often one account's usage can be read, and Claude Code's own panel
+reads it too, every time you focus it. Right after a switch several of those
+land at once. It clears by itself, usually within minutes; the meter keeps
+showing the last good figures meanwhile, and the extension stops asking until
+the server says it may, so clicking again does not make it worse.
+
+**"The macOS login Keychain is locked"** — unlock it (log out and back in, or
+open Keychain Access) and try again. The extension refuses to guess while the
+Keychain is locked, rather than switching to a stale login.
+
+**macOS asks whether `security` may use a keychain item** — choose **Always
+Allow**. That is the system tool the extension uses to read and write the
+login, the same one Claude Code itself uses.
+
 **The account name has an orange background** — the live login is not saved as a
 profile. Run **Save Current Login…**, or you will lose it the next time you
 switch away.
@@ -163,7 +184,7 @@ They share an extension id, so installing one replaces the other — you can nev
 end up with two status bars fighting over the same account store.
 
 ```powershell
-npm test              # 271 tests, no network, no touching your real ~/.claude
+npm test              # 316 tests, no network, no touching your real ~/.claude
 npm run stage         # build both editions into dist/ without packaging
 npm run package       # both .vsix files into dist/
 npm run package:main  # just the team build

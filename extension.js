@@ -12,6 +12,7 @@ const liveLib = require('./lib/live')
 const remoteLib = require('./lib/remote')
 const secretsLib = require('./lib/secrets')
 const shell = require('./lib/shell')
+const credstore = require('./lib/credstore')
 const editionLib = require('./lib/edition')
 
 const NEW_CONVERSATION = 'claude-vscode.newConversation'
@@ -273,7 +274,6 @@ const pendingLogins = new Set()
  */
 function watchLogin(dir, startedAt, cancelToken) {
   return new Promise((resolve) => {
-    const credPath = path.join(dir, '.credentials.json')
     let lastCheckedMtime = 0
     let confirmed = null
     let confirmedAt = 0
@@ -299,9 +299,16 @@ function watchLogin(dir, startedAt, cancelToken) {
         return
       }
 
+      // The file on Windows and Linux, the Keychain on macOS. Only a timestamp
+      // is read here; the token itself stays where it is until import.
       let mtime = 0
-      try { mtime = fs.statSync(credPath).mtimeMs } catch { return }
-      // 2s slack for filesystem timestamp granularity; skip files we already checked.
+      try {
+        const st = credstore.stat(dir)
+        if (!st.exists) return
+        mtime = st.modifiedMs
+      } catch (e) { log('login watch: ' + (e && e.message)); return }
+      // 2s slack for timestamp granularity (the Keychain keeps whole seconds);
+      // skip a login we already checked.
       if (mtime < startedAt - 2000 || mtime === lastCheckedMtime) return
       lastCheckedMtime = mtime
 
@@ -369,7 +376,7 @@ async function finalizeLogin(name, dir, st, isNew) {
       profilesLib.importFromDir(root(), dup, dir, { move: true, fallback })
       vscode.window.showInformationMessage('Refreshed the saved login for "' + dup + '".')
     } else {
-      try { fs.rmSync(path.join(dir, '.credentials.json'), { force: true }) } catch { /* ignore */ }
+      try { credstore.remove(dir) } catch (e) { log('discard failed: ' + (e && e.message)) }
     }
     if (isNew) store.removeAccount(root(), name)
     refreshAll()
@@ -405,7 +412,11 @@ function syncStagedLogins() {
   for (const a of store.readRegistry(root()).accounts) {
     const dir = store.configDir(root(), a.name)
     let mtime
-    try { mtime = fs.statSync(path.join(dir, '.credentials.json')).mtimeMs } catch { continue }
+    try {
+      const st = credstore.stat(dir)
+      if (!st.exists) continue
+      mtime = st.modifiedMs
+    } catch (e) { log('staged login check for "' + a.name + '": ' + (e && e.message)); continue }
     if (profilesLib.exists(root(), a.name) && mtime <= profilesLib.capturedAt(root(), a.name)) continue
 
     const id = store.identity(root(), a.name)
@@ -1021,7 +1032,8 @@ async function showStatus() {
   output.appendLine('')
   output.appendLine('=== Claude accounts ===')
   output.appendLine('edition: ' + edition)
-  output.appendLine('platform: ' + process.platform + '  ·  credential store: ' + secretsLib.describe())
+  output.appendLine('platform: ' + process.platform + '  ·  saved-account encryption: ' + secretsLib.describe())
+  output.appendLine('live login read from: ' + credstore.describe(null))
   output.appendLine('root: ' + root())
   output.appendLine('mode: ' + store.getMode(root()))
   output.appendLine('this window: ' + JSON.stringify(currentWindowAccount()))
@@ -1077,12 +1089,14 @@ const BACKUP_EXT = '.enc'
 async function backup() {
   const name = await pickAccount('Back up credentials for...', { includeDefault: false })
   if (!name) return
-  const src = path.join(store.configDir(root(), name), '.credentials.json')
-  if (!fs.existsSync(src)) {
+  const creds = credstore.read(store.configDir(root(), name))
+  if (!creds) {
     vscode.window.showWarningMessage('"' + name + '" has no credentials to back up.')
     return
   }
-  const blob = secretsLib.protect(fs.readFileSync(src))
+  // The same JSON the credential file holds, so backups from before macOS
+  // support (raw file bytes) and after it restore the same way.
+  const blob = secretsLib.protect(Buffer.from(JSON.stringify(creds), 'utf8'))
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const dest = path.join(root(), 'backups', name + '-' + stamp + BACKUP_EXT)
   fs.writeFileSync(dest, blob)
@@ -1114,7 +1128,7 @@ async function restore() {
     'Overwrite current credentials for "' + name + '" with ' + pick + '?', { modal: true }, 'Restore')
   if (confirm !== 'Restore') return
   const plain = secretsLib.unprotect(fs.readFileSync(path.join(dir, pick)))
-  fs.writeFileSync(path.join(target, '.credentials.json'), plain)
+  credstore.write(target, JSON.parse(plain.toString('utf8')))
   store.lockdown(target)
   vscode.window.showInformationMessage('Restored "' + name + '".')
   await verifyAccount(name)
@@ -1126,11 +1140,31 @@ async function restore() {
  */
 let usageFetchInFlight = false
 
+/**
+ * After a 429, stop asking until the server says we may: more requests during
+ * the window cannot succeed and may only prolong it. Keyed per account, since
+ * the limit is.
+ */
+const usagePausedUntil = new Map()
+/** Used when a 429 carries no Retry-After. */
+const DEFAULT_USAGE_PAUSE_MS = 5 * 60 * 1000
+
+function minutesFrom(ms) { return Math.max(1, Math.ceil(ms / 60000)) }
+
 async function refreshUsage() {
   if (usageFetchInFlight) return
-  usageFetchInFlight = true
 
   const cur = currentWindowAccount()
+  const pauseKey = cur.dir || DEFAULT_NAME
+  const pausedFor = (usagePausedUntil.get(pauseKey) || 0) - Date.now()
+  if (pausedFor > 0) {
+    vscode.window.showInformationMessage('Anthropic is rate-limiting usage checks for this ' +
+      'account, so the meter is showing cached figures. Try again in about ' +
+      minutesFrom(pausedFor) + ' min.')
+    return
+  }
+
+  usageFetchInFlight = true
   const previousText = usageBar.text
   usageBar.text = '$(sync~spin) usage...'
   usageBar.tooltip = 'Fetching live usage from Anthropic...'
@@ -1141,6 +1175,15 @@ async function refreshUsage() {
       usageLib.writeLiveCache(root(), cur.dir, res.utilization)
       updateUsageBar()
       log('live usage fetched for ' + (cur.name || 'default'))
+    } else if (res.rateLimited) {
+      const wait = res.retryAfterMs || DEFAULT_USAGE_PAUSE_MS
+      usagePausedUntil.set(pauseKey, Date.now() + wait)
+      usageBar.text = previousText
+      updateUsageBar()
+      log('usage rate-limited for ' + (cur.name || 'default') + '; pausing ' + Math.round(wait / 1000) + 's')
+      vscode.window.showWarningMessage('Anthropic is rate-limiting usage checks for this account ' +
+        'right now, which is common just after switching. The meter is showing cached figures; ' +
+        'try again in about ' + minutesFrom(wait) + ' min.')
     } else {
       usageBar.text = previousText
       updateUsageBar()

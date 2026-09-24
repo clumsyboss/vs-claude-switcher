@@ -123,7 +123,13 @@ ext._test.setLoginPollMs(20)
 
 // Never touch the network from tests; each test sets the next response.
 let nextFetch = { ok: false, reason: 'mocked offline' }
-liveLib.fetchUsage = async () => nextFetch
+let fetchCount = 0
+// `raw` runs a canned HTTP response through the real interpret(), so the
+// response-validation rules are exercised end to end.
+liveLib.fetchUsage = async () => {
+  fetchCount++
+  return nextFetch.raw ? liveLib.interpret(nextFetch.raw) : nextFetch
+}
 
 let pass = 0, fail = 0
 function check(label, cond, extra) {
@@ -419,6 +425,32 @@ async function main() {
   check('still shows live numbers after a failed refresh',
     bars[1].text === '$(pulse) 11% | 33% | 22%', bars[1].text)
   check('user was told why', messages.some((m) => m.includes('mocked 401')))
+
+  console.log('\n-- a 200 with no usage in it does not blank the meter --')
+  nextFetch = { raw: { status: 200, body: '{}', headers: {} } }
+  q.warn.push(undefined)
+  await registered['claudeswitcher.refreshUsage']()
+  check('a fieldless 200 keeps the previous figures',
+    bars[1].text === '$(pulse) 11% | 33% | 22%', bars[1].text)
+  check('and is reported, not silently cached', messages.some((m) => m.includes('no usage data')))
+  nextFetch = { raw: { status: 200, body: JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'busy' } }), headers: {} } }
+  q.warn.push(undefined)
+  await registered['claudeswitcher.refreshUsage']()
+  check('an error body inside a 200 keeps them too', bars[1].text === '$(pulse) 11% | 33% | 22%', bars[1].text)
+
+  console.log('\n-- a 429 pauses usage checks instead of retrying into the limit --')
+  nextFetch = { raw: { status: 429, body: '', headers: { 'retry-after': '120' } } }
+  q.warn.push(undefined)
+  const sent = fetchCount
+  await registered['claudeswitcher.refreshUsage']()
+  check('the 429 request went out once', fetchCount === sent + 1)
+  check('figures kept', bars[1].text === '$(pulse) 11% | 33% | 22%', bars[1].text)
+  check('told it is rate-limiting, with the wait',
+    messages.some((m) => m.includes('rate-limiting') && m.includes('2 min')), messages.slice(-1)[0])
+  q.info.push(undefined)
+  await registered['claudeswitcher.refreshUsage']()
+  check('clicking again during the pause sends nothing', fetchCount === sent + 1, String(fetchCount - sent))
+  check('and says how long is left', messages.slice(-1)[0].includes('Try again in about'), messages.slice(-1)[0])
   delete process.env.CLAUDE_CONFIG_DIR
   console.log('\n-- rename an account (label only) --')
   q.quick.push('work')

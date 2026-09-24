@@ -2,7 +2,7 @@
   "name": "claude-account-switcher",
   "displayName": "Claude Account Switcher (Experimental)",
   "description": "Claude Account Switcher plus per-window accounts, per-account Remote Control, and credential backup.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -14,7 +14,7 @@
     "edition": "experimental"
   },
   "scripts": {
-    "test": "node test/harness.js && node test/profiles.test.js && node test/edition.test.js && node test/secrets.test.js && node test/macos.test.js",
+    "test": "node test/harness.js && node test/profiles.test.js && node test/edition.test.js && node test/secrets.test.js && node test/macos.test.js && node test/live.test.js",
     "stage": "node build.js --no-package",
     "package": "node build.js",
     "package:main": "node build.js main",
